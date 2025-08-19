@@ -13,31 +13,6 @@ load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 AVG_TOKENS = 90
 
-def format_toxic_message(text, token_probs, offset_mapping, threshold=0.4):
-    spans = []
-    for (start, end), prob in zip(offset_mapping[0].tolist(), token_probs):
-        if prob >= threshold and start != end:
-            spans.append((start, end))
-
-    # Merge overlapping/adjacent spans
-    merged = []
-    for s, e in sorted(spans):
-        if not merged or s > merged[-1][1]:
-            merged.append([s, e])
-        else:
-            merged[-1][1] = max(merged[-1][1], e)
-
-    # Insert Markdown highlights
-    result = []
-    last = 0
-    for s, e in merged:
-        result.append(text[last:s])
-        result.append(f"**{text[s:e]}**")
-        last = e
-    result.append(text[last:])
-
-    return "".join(result)
-
 # Load model
 class ToxicityModel(nn.Module):
     def __init__(self, model_name="microsoft/deberta-v3-base"):
@@ -91,18 +66,73 @@ def predict_toxicity(text):
 
     # Run model
     with torch.no_grad():
-        seq_logits, tok_logits = model(**inputs)
+        clf_logits, tok_logits = model(**inputs)
 
         # Sequence-level probability
-        toxicity_prob = torch.sigmoid(seq_logits).squeeze().item()
+        toxicity_prob = torch.sigmoid(clf_logits).squeeze(-1)
 
         # Token-level probabilities (take class=1 for toxic)
-        token_probs = F.softmax(tok_logits, dim=-1)[..., 1].squeeze(0).tolist()
+        token_probs = F.softmax(tok_logits, dim=-1)[..., 1][0]
+        tok_preds = (token_probs >= SPAN_THRESHOLD).long()
 
     # Decide overall toxic/non-toxic
     is_toxic = toxicity_prob >= TOXICITY_THRESHOLD
 
-    return is_toxic, token_probs, offset_mapping
+    return is_toxic, tok_preds, offset_mapping
+
+def censor_toxic_spans(text, tok_preds, offset_mapping):
+    """
+    Censor toxic spans by replacing each word with the appropriate number of stars
+    """
+    import re
+    
+    toks_to_censor = []
+    for pred, (start, end) in zip(tok_preds, offset_mapping[0].tolist()):
+        if pred == 1 and start != end:
+            toks_to_censor.append((start, end))
+    
+    if not toks_to_censor:
+        return None
+    
+    # Merge overlapping spans
+    merged_spans = []
+    for start, end in sorted(toks_to_censor):
+        if not merged_spans or start > merged_spans[-1][1]:
+            merged_spans.append([start, end])
+        else:
+            merged_spans[-1][1] = max(merged_spans[-1][1], end)
+    
+    # Build censored text by working backwards to avoid index shifts
+    censored_text = text
+    
+    for start, end in reversed(merged_spans):
+        # Get the original span (including surrounding context for spacing)
+        original_span = text[start:end]
+        
+        if not original_span.strip():
+            continue
+        
+        # Use regex to find and replace words while preserving spacing
+        def replace_word(match):
+            word = match.group()
+            return '\\*' * len(word)  # Escape asterisk for Discord
+        
+        # Replace all word characters with asterisks, keeping spaces and punctuation
+        replacement = re.sub(r'\w', lambda m: '\\*', original_span)
+        
+        # Ensure proper spacing around censored words
+        # Check if we need to add space before
+        if start > 0 and text[start-1].isalnum() and replacement.lstrip() == replacement:
+            replacement = ' ' + replacement
+        
+        # Check if we need to add space after  
+        if end < len(text) and text[end].isalnum() and replacement.rstrip() == replacement:
+            replacement = replacement + ' '
+        
+        # Replace in the text
+        censored_text = censored_text[:start] + replacement + censored_text[end:]
+    
+    return censored_text
 
 @bot.event
 async def on_ready():
@@ -110,28 +140,34 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
+    # Ignore the bots messages
     if message.author == bot.user:
-        return  # ignore self
+        return
 
-    is_toxic, token_probs, offset_mapping = predict_toxicity(message.content)
+    is_toxic, tok_preds, offset_mapping = predict_toxicity(message.content)
 
+    # We shall follow a conservative approach:
+    # 1. If the message is not toxic -> do nothing
+    # 2. if the message is toxic:
+    #   1. If the spans list is not empty -> simply censor the toxic parts with '*'
+    #   2. If the spans list is empty -> delete the message and inform the user via a dm
     if is_toxic:
-        try:
-            print("Toxic message")
-            # delete the original toxic message
-            await message.delete()
+        censored_text = censor_toxic_spans(message.content, tok_preds, offset_mapping)
+        
+        if censored_text:
+            # Delete original and send censored
+            try:
+                await message.delete()
+                await message.channel.send(f"{message.author.mention}: {censored_text}")
+            except Exception as e:
+                print(f"Error censoring message: {e}")
+        else:
+            try:
+                await message.delete()
+                await message.author.send(f"Message flagged due to toxicity:\n{message.content}")
+            except Exception as e:
+                print(f"Error handling toxic message: {e}")
 
-            # highlight spans in bold using offsets
-            highlighted = format_toxic_message(message.content, token_probs, offset_mapping)
-
-            # DM the user
-            dm_text = f"Message flagged due to toxicity:\n{highlighted}"
-            await message.author.send(dm_text)
-
-        except Exception as e:
-            print(f"Error handling toxic message: {e}")
-
-    # Important: process commands if any
     await bot.process_commands(message)
 
 # Run your bot
