@@ -1,7 +1,7 @@
 ## Offensive-text-detection
 In this project I aim to show:
-1. How we can train a model that is able to accurately predict toxic texts as well as the spans of toxic parts in said text.
-2. How such a model could be utilized for moderation, specificaly, for a discord moderation bot.
+1. How we can train a model that is able to accurately predict toxic texts as well as the spans of toxic parts in said text. (Code in `offensive_language.ipynb`)
+2. How such a model could be utilized for moderation, specificaly, for a discord moderation bot. (Code in `run-bot.py`)
 
 ### Data
 * **Toxicity detection**: For this task we used the dataset provided in the **jigsaw toxic comment classification challenge** on kaggle. The data was provided in train and test splits, thus I chose to not combine
@@ -32,7 +32,38 @@ All 3 options should work just fine for this task, however I opted for the 2nd a
 training sessions:
 ![toxic](assets/toxicity-images.png)
 ![span](assets/span-image2.png)
-During training (knowing that we will not need too many epochs beforehand) I chose to save the model weights at each epoch and choose the one that seemed to work the best.
+During training (knowing that we will not need too many epochs beforehand) I chose to save the model weights at each epoch and later chose the one that seemed to work the best.
+
+### Evaluation
+During the evaluation I decided to find the best thresholds for both tasks, so that we will use them during inference and to evaluate our model's performance on all the test data. The evaluation yielded these results:\
+* **Toxicity detection**:\
+Accuracy:  0.8961\
+Precision: 0.4822\
+Recall:    0.8835\
+F1-score:  0.6239\
+ROC-AUC:   0.9537
+
+* **Toxic span deetction**:\
+Precision: 0.5010\
+Recall:    0.6935\
+F1-score:  0.5817
+
+This shows that while our model doesn't reach the maximum performance in any of the two tasks, it can still work very well. (More careful fine tuning or a different method (1 or 3) could perhaps yield even better results!)
+
+### Discord bot
+For the discord bot I constructed a simple script that allows the bot to run on my discord server and detect toxic messages. Specifically it follows the following logic:
+1. If the message is not toxic -> do nothing
+2. if the message is toxic:
+   1. If the spans list is not empty -> simply censor the toxic parts with '*'
+   2. If the spans list is empty -> delete the message and inform the user via a dm
+I also use a not so simple function `censor_toxic_spans`, so that only correct part is censored and so that the number of stars that appear match the number of letters in the censored word
+Some examples:
+1. Go to hell! -> Go to ****!
+2. Go hang yourself! -> Go **** yourself!
+
+### Final thoughts/Retrospective
+As previously stated I believe that a better model can most certainly be derived through better tuning or by choosing a better, more complex method. Other than that I believe the model works pretty well and the discord bot helps highlight how such a model could be used in moderation throught many pieces of media, not just discord.
+
 
 
 
