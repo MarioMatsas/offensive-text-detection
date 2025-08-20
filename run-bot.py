@@ -22,8 +22,9 @@ class ToxicityModel(nn.Module):
         self.dropout = nn.Dropout(0.1)
 
         # Heads
-        self.seq_head = nn.Linear(hidden, 1)   # Sequence classification
-        self.tok_head = nn.Linear(hidden, 2)   # Token-level classification
+        self.classification_head = nn.Linear(hidden, 1) 
+        # This COULD have been (hidden, 1), since we only have 2 classes but we use softmax because it's the standard way
+        self.token_head = nn.Linear(hidden, 2)
 
     def forward(self, input_ids, attention_mask, token_type_ids=None):
         out = self.backbone(
@@ -32,12 +33,13 @@ class ToxicityModel(nn.Module):
             token_type_ids=token_type_ids,
             return_dict=True
         )
-        last_hidden = self.dropout(out.last_hidden_state)  # [B, T, H]
-        cls_pooled = self.dropout(last_hidden[:, 0])      # CLS pooling
+        last_hidden = self.dropout(out.last_hidden_state) 
+        cls_pooled  = self.dropout(last_hidden[:, 0]) # CLS pooling for DeBERTa-v3
 
-        seq_logits = self.seq_head(cls_pooled)            # [B, 1]
-        tok_logits = self.tok_head(last_hidden)           # [B, T, 2]
-        return seq_logits, tok_logits
+        clf_logits  = self.classification_head(cls_pooled) # [B, 1]
+        tok_logits  = self.token_head(last_hidden) # [B, T, 2]
+        return clf_logits, tok_logits
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 model = ToxicityModel(model_name="microsoft/deberta-v3-base")
