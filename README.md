@@ -29,8 +29,9 @@ allow us to obtain good spans without destroying the already trained model.
 3. Combine the 2 options above, by training jintly first and then fine tuning with extra training
 
 All 3 options should work just fine for this task, however I opted for the 2nd as I felt it was easier to manage and overall more intuitive, while giving reasonable results. Below are the learning curves for both
-training sessions:\
-
+training sessions:
+![toxic](assets/toxicity-images.png)
+![span](assets/span-image2.png)
 During training (knowing that we will not need too many epochs beforehand) I chose to save the model weights at each epoch and choose the one that seemed to work the best.
 
 
