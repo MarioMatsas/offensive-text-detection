@@ -36,6 +36,13 @@ During training (knowing that we will not need too many epochs beforehand) I cho
 
 ### Evaluation
 During the evaluation I decided to find the best thresholds for both tasks, so that we will use them during inference and to evaluate our model's performance on all the test data. The evaluation yielded these results:\
+* **Toxicity detection (before span detection training)**:\
+Accuracy:  0.9135\
+Precision: 0.5340\
+Recall:    0.8936\
+F1-score:  0.6685\
+ROC-AUC:   0.9619
+
 * **Toxicity detection**:\
 Accuracy:  0.8961\
 Precision: 0.4822\
@@ -48,7 +55,7 @@ Precision: 0.5010\
 Recall:    0.6935\
 F1-score:  0.5817
 
-This shows that while our model doesn't reach the maximum performance in any of the two tasks, it can still work very well. (More careful fine tuning or a different method (1 or 3) could perhaps yield even better results!)
+This shows that while our model doesn't reach the maximum performance in any of the two tasks, it can still work very well. We also see that catastrophic forgeting doesn't occur due to the careful way we have decided to train for the span detection task(More careful fine tuning or a different method (1 or 3) could perhaps yield even better results!)
 
 ### Discord bot
 For the discord bot I constructed a simple script that allows the bot to run on my discord server and detect toxic messages. Specifically it follows the following logic:
